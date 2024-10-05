@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Text.Json;
 using System.Web;
 namespace DoceboClient
 {
@@ -23,7 +24,6 @@ namespace DoceboClient
                    strUserName = string.Empty,
                    strPassword = string.Empty;
 
-
             try
             {
                 if (string.IsNullOrEmpty(txtURL.Text))
@@ -40,44 +40,25 @@ namespace DoceboClient
                     strScope = "api";
                     strUserName = "admin.user01";
                     strPassword = "Docebo&92";
-
                 }
 
-                /*
-                 
-                curl -X POST https://<yoursubdomain.docebosaas.com>/oauth2/token \
-                   -F client_id=<your_client_id> \
-                   -F client_secret=<your_client_secret> \
-                   -F grant_type=password \
-                   -F scope=api \
-                   -F username=<your_username> \
-                   -F password=<your_password>
-                 
-                 */
-
-                // call web service
-
-                /* 
-                WebProxy proxy = new WebProxy();
-                proxy.Address = new Uri("http://proxyserver:8080");
-                proxy.Credentials = new NetworkCredential("username", "password");
-                HttpClient.DefaultProxy = proxy;
-                */
-
                 client.BaseAddress = new Uri(strURL);
-                // add post data                // add post data
                 client.DefaultRequestHeaders.Accept.Clear();
                 client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/x-www-form-urlencoded"));
-                //client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "YOUR_API_KEY");
-                var postData = new List<KeyValuePair<string, string>>();
-                postData.Add(new KeyValuePair<string, string>("client_id", strClientID));
-                postData.Add(new KeyValuePair<string, string>("client_secret", strClientSecret));
-                postData.Add(new KeyValuePair<string, string>("grant_type", strGrantType));
-                postData.Add(new KeyValuePair<string, string>("scope", strScope));
-                postData.Add(new KeyValuePair<string, string>("username", strUserName));
-                postData.Add(new KeyValuePair<string, string>("password", strPassword));
+
+                var postData = new List<KeyValuePair<string, string>>
+                {
+                    new KeyValuePair<string, string>("client_id", strClientID),
+                    new KeyValuePair<string, string>("client_secret", strClientSecret),
+                    new KeyValuePair<string, string>("grant_type", strGrantType),
+                    new KeyValuePair<string, string>("scope", strScope),
+                    new KeyValuePair<string, string>("username", strUserName),
+                    new KeyValuePair<string, string>("password", strPassword)
+                };
+
                 FormUrlEncodedContent content = new FormUrlEncodedContent(postData);
                 HttpResponseMessage apiResponse = client.PostAsync(strURL, content).Result;
+
                 if (apiResponse != null)
                 {
                     var strResponse = apiResponse.Content.ReadAsStringAsync().Result;
@@ -86,22 +67,12 @@ namespace DoceboClient
                         Console.WriteLine(strResponse);
                         txtResponse.Text = strResponse;
 
-                        strResponse.Split(new char[] { ',' }).ToList().ForEach(x =>
+                        // Parse the JSON response
+                        var jsonDoc = JsonDocument.Parse(strResponse);
+                        if (jsonDoc.RootElement.TryGetProperty("access_token", out JsonElement accessTokenElement))
                         {
-                            if (x.Contains("access_token"))
-                            {
-                                txtToken.Text = x.Split(new char[] { ':' })[1].Replace("\"", "");
-                            }
-                        });
-                        /*
-                         {
-                            "access_token":"6e3635091e4473b418997f6ed37a174096cbe553",
-                            "expires_in":3600,
-                            "token_type":"Bearer",
-                            "scope":"api",
-                            "refresh_token":"ca74ad57679f251d1ed0969d76ea1c26868e843c"
-                          }
-                         */
+                            txtToken.Text = accessTokenElement.GetString();
+                        }
                     }
                 }
                 else
@@ -113,11 +84,6 @@ namespace DoceboClient
             {
                 MessageBox.Show(ex.Message);
             }
-
-
-
-
-
         }
 
         private void label1_Click(object sender, EventArgs e)
