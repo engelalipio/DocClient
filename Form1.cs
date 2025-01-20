@@ -1,150 +1,121 @@
 using System.Net;
 using System.Net.Http.Headers;
+using Microsoft.Extensions.Configuration;
 using System.Text.Json;
-using System.Web;
+
 namespace DoceboClient
 {
     public partial class Form1 : Form
     {
+        private readonly HttpClient _httpClient;
+        private readonly IConfiguration _configuration;
+        private const string API_SCOPE = "api";
+        private const string GRANT_TYPE = "password";
+
         public Form1()
         {
             InitializeComponent();
+            _httpClient = new HttpClient();
+            
+            // Load configuration from appsettings.json
+            _configuration = new ConfigurationBuilder()
+                .SetBasePath(Directory.GetCurrentDirectory())
+                .AddJsonFile("appsettings.json", optional: false)
+                .Build();
         }
 
-
-        private void cmdGo_Click(object sender, EventArgs e)
+        private async Task<string> HandleApiResponseAsync(HttpResponseMessage response)
         {
-            var client = new HttpClient();
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new HttpRequestException($"API request failed: {response.StatusCode} - {response.ReasonPhrase}");
+            }
 
-            string strURL = string.Empty,
-                   strClientID = string.Empty,
-                   strClientSecret = string.Empty,
-                   strGrantType = string.Empty,
-                   strScope = string.Empty,
-                   strUserName = string.Empty,
-                   strPassword = string.Empty;
+            var content = await response.Content.ReadAsStringAsync();
+            if (string.IsNullOrEmpty(content))
+            {
+                throw new InvalidOperationException("API returned empty response");
+            }
 
+            txtResponse.Text = content;
+            return content;
+        }
+
+        private async void cmdGo_Click(object sender, EventArgs e)
+        {
             try
             {
                 if (string.IsNullOrEmpty(txtURL.Text))
                 {
-                    MessageBox.Show("Please enter URL");
+                    MessageBox.Show("Please enter URL", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
-                else
-                {
-                    strURL = txtURL.Text;
-                    strClientID = txtClientID.Text;
-                    strClientSecret = txtClientSecret.Text;
-                    strGrantType = "password";
-                    strScope = "api";
-                    strUserName = "admin.user01";
-                    strPassword = "Docebo&92";
-                }
 
-                client.BaseAddress = new Uri(strURL);
-                client.DefaultRequestHeaders.Accept.Clear();
-                client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/x-www-form-urlencoded"));
+                // Configure HTTP client
+                _httpClient.BaseAddress = new Uri(txtURL.Text);
+                _httpClient.DefaultRequestHeaders.Accept.Clear();
+                _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/x-www-form-urlencoded"));
 
-                var postData = new List<KeyValuePair<string, string>>
+                var postData = new Dictionary<string, string>
                 {
-                    new KeyValuePair<string, string>("client_id", strClientID),
-                    new KeyValuePair<string, string>("client_secret", strClientSecret),
-                    new KeyValuePair<string, string>("grant_type", strGrantType),
-                    new KeyValuePair<string, string>("scope", strScope),
-                    new KeyValuePair<string, string>("username", strUserName),
-                    new KeyValuePair<string, string>("password", strPassword)
+                    ["client_id"] = txtClientID.Text,
+                    ["client_secret"] = txtClientSecret.Text,
+                    ["grant_type"] = GRANT_TYPE,
+                    ["scope"] = API_SCOPE,
+                    ["username"] = _configuration["Docebo:Username"],
+                    ["password"] = _configuration["Docebo:Password"]
                 };
 
-                FormUrlEncodedContent content = new FormUrlEncodedContent(postData);
-                HttpResponseMessage apiResponse = client.PostAsync(strURL, content).Result;
-
-                if (apiResponse != null)
+                using var content = new FormUrlEncodedContent(postData);
+                using var response = await _httpClient.PostAsync(txtURL.Text, content);
+                
+                var responseContent = await HandleApiResponseAsync(response);
+                
+                // Parse token from response
+                var jsonDoc = JsonDocument.Parse(responseContent);
+                if (jsonDoc.RootElement.TryGetProperty("access_token", out JsonElement accessTokenElement))
                 {
-                    var strResponse = apiResponse.Content.ReadAsStringAsync().Result;
-                    if (!string.IsNullOrEmpty(strResponse))
-                    {
-                        Console.WriteLine(strResponse);
-                        txtResponse.Text = strResponse;
-
-                        // Parse the JSON response
-                        var jsonDoc = JsonDocument.Parse(strResponse);
-                        if (jsonDoc.RootElement.TryGetProperty("access_token", out JsonElement accessTokenElement))
-                        {
-                            txtToken.Text = accessTokenElement.GetString();
-                        }
-                    }
-                }
-                else
-                {
-                    MessageBox.Show(apiResponse.StatusCode.ToString());
+                    txtToken.Text = accessTokenElement.GetString();
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message);
+                MessageBox.Show($"Error: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                // Add proper logging here
             }
         }
 
-        private void label1_Click(object sender, EventArgs e)
+        private async void button1_Click(object sender, EventArgs e)
         {
-
-        }
-
-        private void button1_Click(object sender, EventArgs e)
-        {
-            var client = new HttpClient();
-
-            string strURL  = "https://citisandbox2.docebosaas.com/learn/v1/catalog?all_catalogs=1",
-                   strToken = string.Empty;
-
-
             try
             {
                 if (string.IsNullOrEmpty(txtToken.Text))
                 {
-                    MessageBox.Show("Please enter a valid Token");
+                    MessageBox.Show("Please enter a valid Token", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
-                
-                strToken = txtToken.Text;
 
-                client.BaseAddress = new Uri(strURL);
-                // add post data                // add post data
-                client.DefaultRequestHeaders.Accept.Clear();
-                //client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", strToken);
-                 
-                HttpResponseMessage apiResponse = client.GetAsync(strURL).Result;
-                if (apiResponse != null)
-                {
-                    var strResponse = apiResponse.Content.ReadAsStringAsync().Result;
-                    if (!string.IsNullOrEmpty(strResponse))
-                    {
-                        Console.WriteLine(strResponse);
-                        txtResponse.Text = strResponse;
+                var catalogUrl = _configuration["Docebo:CatalogUrl"];
+                _httpClient.DefaultRequestHeaders.Accept.Clear();
+                _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", txtToken.Text);
 
-                        /*
-                         {
-                            "access_token":"6e3635091e4473b418997f6ed37a174096cbe553",
-                            "expires_in":3600,
-                            "token_type":"Bearer",
-                            "scope":"api",
-                            "refresh_token":"ca74ad57679f251d1ed0969d76ea1c26868e843c"
-                          }
-                         */
-                    }
-                }
-                else
-                {
-                    MessageBox.Show(apiResponse.StatusCode.ToString());
-                }
+                using var response = await _httpClient.GetAsync(catalogUrl);
+                await HandleApiResponseAsync(response);
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message);
+                MessageBox.Show($"Error: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                // Add proper logging here
             }
+        }
 
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _httpClient?.Dispose();
+            }
+            base.Dispose(disposing);
         }
     }
 }
