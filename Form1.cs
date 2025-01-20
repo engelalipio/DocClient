@@ -16,10 +16,12 @@ namespace DoceboClient
         {
             InitializeComponent();
             _httpClient = new HttpClient();
-            
+
             // Load configuration from appsettings.json
+            string sCurrentDirectory = Directory.GetCurrentDirectory();
+
             _configuration = new ConfigurationBuilder()
-                .SetBasePath(Directory.GetCurrentDirectory())
+                .SetBasePath(sCurrentDirectory)
                 .AddJsonFile("appsettings.json", optional: false)
                 .Build();
         }
@@ -58,8 +60,8 @@ namespace DoceboClient
 
                 var postData = new Dictionary<string, string>
                 {
-                    ["client_id"] = txtClientID.Text,
-                    ["client_secret"] = txtClientSecret.Text,
+                    ["client_id"] = _configuration["Docebo:ClientID"],
+                    ["client_secret"] = _configuration["Docebo:ClientSecret"],
                     ["grant_type"] = GRANT_TYPE,
                     ["scope"] = API_SCOPE,
                     ["username"] = _configuration["Docebo:Username"],
@@ -68,9 +70,9 @@ namespace DoceboClient
 
                 using var content = new FormUrlEncodedContent(postData);
                 using var response = await _httpClient.PostAsync(txtURL.Text, content);
-                
+
                 var responseContent = await HandleApiResponseAsync(response);
-                
+
                 // Parse token from response
                 var jsonDoc = JsonDocument.Parse(responseContent);
                 if (jsonDoc.RootElement.TryGetProperty("access_token", out JsonElement accessTokenElement))
@@ -116,6 +118,11 @@ namespace DoceboClient
                 _httpClient?.Dispose();
             }
             base.Dispose(disposing);
+        }
+
+        private void Form1_Load(object sender, EventArgs e)
+        {
+
         }
     }
 }
