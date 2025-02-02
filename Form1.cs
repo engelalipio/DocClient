@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using Microsoft.Extensions.Configuration;
 using System.Text.Json;
 using System.Text;
+using Microsoft.VisualBasic;
 
 namespace DoceboClient
 {
@@ -39,8 +40,19 @@ namespace DoceboClient
             {
                 throw new InvalidOperationException("API returned empty response");
             }
+             
+            try
+            {               
+                if (!string.IsNullOrEmpty(content)){
+                    this.txtResponse.Text = this.PrettyJson(content);
+                }
+            }
+            catch (Exception ex)
+            {
+                this.txtResponse.Text = ex.Message;
+            }
 
-            txtResponse.Text = content;
+           
             return content;
         }
 
@@ -88,8 +100,8 @@ namespace DoceboClient
                     ["client_secret"] = sClientSecret,
                     ["grant_type"] = GRANT_TYPE,
                     ["scope"] = API_SCOPE,
-                    ["username"] = _configuration["Docebo:Username"],
-                    ["password"] = _configuration["Docebo:Password"]
+                    ["username"] = _configuration[string.Format("Docebo:{0}_Username", cboEnvironment.Text)],
+                    ["password"] = _configuration[string.Format("Docebo:{0}_Password", cboEnvironment.Text)]
                 };
 
                 using var content = new FormUrlEncodedContent(postData);
@@ -111,16 +123,28 @@ namespace DoceboClient
             }
         }
 
+        private string PrettyJson(string unPrettyJson){
+            var options = new JsonSerializerOptions()
+            {
+                WriteIndented = true
+            };
+
+            var jsonElement = JsonSerializer.Deserialize<JsonElement>(unPrettyJson);
+
+            return JsonSerializer.Serialize(jsonElement, options);
+        }
+
         private async void button1_Click(object sender, EventArgs e)
         {
             try
             {
+                txtResponse.Clear();
+
                 if (string.IsNullOrEmpty(txtToken.Text))
                 {
                     MessageBox.Show("Please enter a valid Token", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
-
 
                 _httpClient.DefaultRequestHeaders.Accept.Clear();
                 _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", txtToken.Text);
@@ -176,7 +200,18 @@ namespace DoceboClient
                         {
                             if (jsonDoc.RootElement.TryGetProperty("data", out JsonElement postElement))
                             {
-                                this.txtResponse.Text = postElement.GetString();
+                                string sResponse = string.Empty;
+                                try
+                                {
+                                    sResponse = postElement.GetString();
+                                    if (!string.IsNullOrEmpty(sResponse)){                                      
+                                        this.txtResponse.Text = this.PrettyJson(sResponse);
+                                        
+                                    }
+                                }
+                                catch (Exception ex) { 
+                                     this.txtResponse.Text = ex.Message;
+                                }                                                                                                        
                             }
 
                         }
@@ -266,7 +301,12 @@ namespace DoceboClient
 
         private void Form1_Load(object sender, EventArgs e)
         {
+            this.initFields();
+        }
 
+        private void initFields()
+        {
+            this.cboEnvironment.SelectedIndex = 0;
         }
 
         private void cboEnvironment_SelectedIndexChanged(object sender, EventArgs e)
@@ -289,8 +329,8 @@ namespace DoceboClient
                     break;
                 case "PROD":
                     sBaseURL = sBaseURL.Replace("{0}", string.Empty);                     
-                    sClientID = string.Format(sClientID, "UAT");
-                    sClientSecret = string.Format(sClientSecret, "UAT");
+                    sClientID = string.Format(sClientID, "PROD");
+                    sClientSecret = string.Format(sClientSecret, "PROD");
                     break;
             }
 
